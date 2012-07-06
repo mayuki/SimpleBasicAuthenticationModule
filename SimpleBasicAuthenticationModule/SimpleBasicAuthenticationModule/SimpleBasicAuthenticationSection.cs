@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Configuration;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web;
 
 namespace Misuzilla.Web.Configuration
@@ -28,20 +29,59 @@ namespace Misuzilla.Web.Configuration
             get { return (String)this["realm"]; }
             set { this["realm"] = value; }
         }
-        
+
+        [ConfigurationProperty("hosts")]
+        public SimpleBasicAuthenticationHostElementCollection Hosts
+        {
+            get { return this["hosts"] as SimpleBasicAuthenticationHostElementCollection; }
+        }
+    }
+    
+    public class SimpleBasicAuthenticationHostElementCollection : ConfigurationElementCollection
+    {
+        public SimpleBasicAuthenticationHostElementCollection()
+        {
+            AddElementName = "host";
+        }
+        protected override ConfigurationElement CreateNewElement()
+        {
+            return new SimpleBasicAuthenticationHostElement();
+        }
+
+        protected override object GetElementKey(ConfigurationElement element)
+        {
+            return (element as SimpleBasicAuthenticationHostElement).Name;
+        }
+    }
+    public class SimpleBasicAuthenticationHostElement : ConfigurationElement
+    {
+        [ConfigurationProperty("name", IsRequired = true, IsKey = true)]
+        public String Name
+        {
+            get { return (String)this["name"]; }
+            set { this["name"] = value; }
+        }
+
+        [ConfigurationProperty("realm", DefaultValue = "Authentication Required")]
+        public String Realm
+        {
+            get { return (String)this["realm"]; }
+            set { this["realm"] = value; }
+        }
+
         [ConfigurationProperty("users")]
         public SimpleBasicAuthenticationUserElementCollection Users
         {
             get { return this["users"] as SimpleBasicAuthenticationUserElementCollection; }
         }
-        
+
         [ConfigurationProperty("exceptPaths")]
         public SimpleBasicAuthenticationExceptPathsElementCollection ExceptPaths
         {
             get { return this["exceptPaths"] as SimpleBasicAuthenticationExceptPathsElementCollection; }
         }
     }
-    
+
     public class SimpleBasicAuthenticationUserElementCollection : ConfigurationElementCollection
     {
         public SimpleBasicAuthenticationUserElementCollection()
@@ -104,6 +144,12 @@ namespace Misuzilla.Web.Configuration
         protected override object GetElementKey(ConfigurationElement element)
         {
             return (element as SimpleBasicAuthenticationExceptPathElement).Path;
+        }
+
+        public Boolean IsMatch(String path)
+        {
+            return this.Cast<SimpleBasicAuthenticationExceptPathElement>()
+                       .Any(x => (x.UseRegex ? Regex.IsMatch(path, "^" + x.Path + "$") : x.Path == path));
         }
     }
 

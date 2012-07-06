@@ -12,30 +12,15 @@ namespace Misuzilla.Web.Security
 {
     public class SimpleBasicAuthenticationModule : BasicAuthenticationModuleBase
     {
-        private Dictionary<String, SimpleBasicAuthenticationUserElement> _users;
-        private List<Regex> _exceptPaths;
-        private Boolean _setUser = true;
-
         #region IHttpModule メンバ
 
         public override void Init(HttpApplication context)
         {
-            if (!GetSection().Enabled)
+            var section = GetSection();
+            if (section == null || !section.Enabled || section.Hosts.Count == 0)
                 return;
 
             base.Init(context);
-
-            _users = new Dictionary<String, SimpleBasicAuthenticationUserElement>();
-            foreach (SimpleBasicAuthenticationUserElement user in GetSection().Users)
-            {
-                _users[user.Name] = user;
-            }
-
-            _exceptPaths = new List<Regex>();
-            foreach (SimpleBasicAuthenticationExceptPathElement exceptPath in GetSection().ExceptPaths)
-            {
-                _exceptPaths.Add(new Regex(exceptPath.UseRegex ? exceptPath.Path : "^"+Regex.Escape(exceptPath.Path)));
-            }
         }
 
         #endregion
@@ -54,32 +39,36 @@ namespace Misuzilla.Web.Security
 
         protected override bool IsAuthenticateRequired(HttpContextBase ctx)
         {
-            return _exceptPaths.TrueForAll(x => !x.IsMatch(ctx.Request.Path));
+            var currentHost = GetCurrentHost(ctx);
+            return currentHost != null &&
+                   currentHost.Name == ctx.Request.Url.DnsSafeHost && // ホスト名がマッチして
+                   !currentHost.ExceptPaths.IsMatch(ctx.Request.Path); // 例外にマッチしないもののみ
         }
         
-        protected override IPrincipal Authenticate(String userName, String password)
+        protected override IPrincipal Authenticate(HttpContextBase ctx, String userName, String password)
         {
-            if (_users.ContainsKey(userName))
+            var currentHost = GetCurrentHost(ctx);
+            var matchedUserElement = currentHost.Users.Cast<SimpleBasicAuthenticationUserElement>().SingleOrDefault(x => x.Name == userName);
+            if (matchedUserElement != null)
             {
-                SimpleBasicAuthenticationUserElement userElement = _users[userName];
                 Boolean isAuthenticated = false;
-                switch (userElement.Type)
+                switch (matchedUserElement.Type)
                 {
                     case PasswordEncodeType.ClearText:
-                        isAuthenticated = (userElement.Password == password);
+                        isAuthenticated = (matchedUserElement.Password == password);
                         break;
                     case PasswordEncodeType.SHA1:
-                        isAuthenticated = (userElement.Password == GetHashDigest(SHA1.Create(), password));
+                        isAuthenticated = (matchedUserElement.Password == GetHashDigest(SHA1.Create(), password));
                         break;
                     case PasswordEncodeType.MD5:
-                        isAuthenticated = (userElement.Password == GetHashDigest(MD5.Create(), password));
+                        isAuthenticated = (matchedUserElement.Password == GetHashDigest(MD5.Create(), password));
                         break;
                 }
 
                 if (isAuthenticated)
                 {
                     return new GenericPrincipal(new GenericIdentity(userName, "Basic"),
-                                                userElement.Roles.Split(new[] {','}, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray());
+                                                matchedUserElement.Roles.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray());
                 }
             }
             return null;
@@ -87,13 +76,22 @@ namespace Misuzilla.Web.Security
 
         protected override string GetRealm(HttpContextBase ctx)
         {
-            return GetSection().Realm;
+            var currentHost = GetCurrentHost(ctx);
+            return (currentHost != null ? currentHost.Realm : null) ?? GetSection().Realm;
         }
     
         private static String GetHashDigest(HashAlgorithm hashAlgorithm, String value)
         {
             var hash = hashAlgorithm.ComputeHash(Encoding.UTF8.GetBytes(value));
             return String.Join("", hash.Select(x => x.ToString("x2")).ToArray());
+        }
+
+        private SimpleBasicAuthenticationHostElement GetCurrentHost(HttpContextBase ctx)
+        {
+            return GetSection().Hosts
+                               .Cast<SimpleBasicAuthenticationHostElement>()
+                               .Where(x => x.Name == ctx.Request.Url.DnsSafeHost)
+                               .SingleOrDefault();
         }
     }
 
@@ -114,7 +112,7 @@ namespace Misuzilla.Web.Security
 
         #endregion
 
-        protected abstract IPrincipal Authenticate(String userName, String password);
+        protected abstract IPrincipal Authenticate(HttpContextBase ctx, String userName, String password);
         protected abstract String GetRealm(HttpContextBase ctx);
         protected abstract Boolean IsAuthenticateRequired(HttpContextBase ctx);
         protected abstract Boolean IsSetUser(HttpContextBase ctx);
@@ -145,7 +143,7 @@ namespace Misuzilla.Web.Security
             }
         }
 
-        private void ExecuteAuthenticate(HttpContextBase ctx, Func<String, String, IPrincipal> authorizer)
+        private void ExecuteAuthenticate(HttpContextBase ctx, Func<HttpContextBase, String, String, IPrincipal> authorizer)
         {
             String authField = ctx.Request.Headers["Authorization"];
 
@@ -172,7 +170,7 @@ namespace Misuzilla.Web.Security
                 }
 
                 // 認証問い合わせ
-                IPrincipal principal = authorizer(parts[0], parts[1]);
+                IPrincipal principal = authorizer(ctx, parts[0], parts[1]);
                 if (principal != null)
                 {
                     if (IsSetUser(ctx))
