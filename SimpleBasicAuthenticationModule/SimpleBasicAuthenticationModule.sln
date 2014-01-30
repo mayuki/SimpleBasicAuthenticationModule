@@ -1,6 +1,8 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.30110.0
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleBasicAuthenticationModule", "SimpleBasicAuthenticationModule\SimpleBasicAuthenticationModule.csproj", "{357BFE08-37B5-4A2C-AAFE-4396548AED09}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleBasicAuthenticationModule.Test", "SimpleBasicAuthenticationModule.Test\SimpleBasicAuthenticationModule.Test.csproj", "{A7B5E6C5-062C-4200-AC02-C1BF38F51D86}"
